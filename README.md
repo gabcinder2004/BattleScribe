@@ -32,11 +32,17 @@ Hover over any ability to see detailed statistics:
 - Sortable columns - click headers to sort by name, normal, or crit values
 - Draggable window with persistent position
 - Alternating row colors for readability
+- Smart tooltip positioning - automatically adjusts to stay on screen
 
 ### Filtering
 - **Time Period**: View all-time records or current session only
 - **Ability Type**: Show all abilities, damage only, or healing only
 - Filter settings persist between sessions
+
+### Settings
+- **Hide in Combat**: Toggle to automatically hide the addon window during combat
+- All UI preferences persist between sessions
+- Settings accessible via cogwheel icon in the title bar
 
 ### Data Management
 - Character-specific tracking

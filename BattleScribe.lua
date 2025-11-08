@@ -10,6 +10,7 @@ BattleScribe.lastUpdateTime = 0
 BattleScribe.updateThrottle = 0.5 -- Only update display every 0.5 seconds
 BattleScribe.pendingUpdate = false
 BattleScribe.iconCache = {} -- Cache for spell icon textures
+BattleScribe.wasShownBeforeCombat = false -- Track visibility state for hide in combat
 
 -- Initialize saved variables
 function BattleScribe:Initialize()
@@ -31,7 +32,8 @@ function BattleScribe:Initialize()
                 perCharacter = true, -- Track per-character by default
                 sortColumn = "name",
                 sortAscending = true,
-                showCurrentSessionOnly = false
+                showCurrentSessionOnly = false,
+                hideInCombat = false
             }
         }
     end
@@ -72,6 +74,9 @@ function BattleScribe:Initialize()
     end
     if BattleScribeDB.settings.showCurrentSessionOnly == nil then
         BattleScribeDB.settings.showCurrentSessionOnly = false
+    end
+    if BattleScribeDB.settings.hideInCombat == nil then
+        BattleScribeDB.settings.hideInCombat = false
     end
 
     -- Restore sort settings
@@ -147,6 +152,10 @@ function BattleScribe:RegisterEvents()
     self.frame:RegisterEvent("CHAT_MSG_SPELL_PERIODIC_CREATURE_DAMAGE")
 
     self.frame:RegisterEvent("PLAYER_LOGOUT")
+
+    -- Combat state events for hide in combat feature
+    self.frame:RegisterEvent("PLAYER_REGEN_DISABLED")  -- Entering combat
+    self.frame:RegisterEvent("PLAYER_REGEN_ENABLED")   -- Leaving combat
 end
 
 -- Parse combat messages and track hits
@@ -168,6 +177,30 @@ function BattleScribe:OnEvent(event, arg1)
 
         -- Save time filter setting
         BattleScribeDB.settings.showCurrentSessionOnly = self.showCurrentSessionOnly
+        return
+    end
+
+    if event == "PLAYER_REGEN_DISABLED" then
+        -- Entering combat
+        if BattleScribeDB.settings.hideInCombat then
+            if self.frame:IsShown() then
+                self.frame:Hide()
+                self.wasShownBeforeCombat = true
+            end
+            -- Also hide settings window
+            if self.settingsFrame:IsShown() then
+                self.settingsFrame:Hide()
+            end
+        end
+        return
+    end
+
+    if event == "PLAYER_REGEN_ENABLED" then
+        -- Leaving combat
+        if BattleScribeDB.settings.hideInCombat and self.wasShownBeforeCombat then
+            self.frame:Show()
+            self.wasShownBeforeCombat = false
+        end
         return
     end
 
@@ -890,15 +923,28 @@ function BattleScribe:ShowStatsTooltip(abilityData, anchorFrame)
 
     -- Position tooltip near the ability row
     tooltip:ClearAllPoints()
-    tooltip:SetPoint("TOPLEFT", anchorFrame, "TOPRIGHT", 5, 0)
+
+    -- Check if tooltip would go off-screen to the right
+    local tooltipWidth = tooltip:GetWidth()
+    local anchorRight = anchorFrame:GetRight()
+    local screenWidth = UIParent:GetRight()
+
+    if anchorRight and screenWidth and (anchorRight + tooltipWidth + 5) > screenWidth then
+        -- Position tooltip to the left of the frame
+        tooltip:SetPoint("TOPRIGHT", anchorFrame, "TOPLEFT", -5, 0)
+    else
+        -- Position tooltip to the right of the frame (default)
+        tooltip:SetPoint("TOPLEFT", anchorFrame, "TOPRIGHT", 5, 0)
+    end
+
     tooltip:Show()
 end
 
 -- Create settings window
 function BattleScribe:CreateSettingsWindow()
     local settingsFrame = CreateFrame("Frame", "BattleScribeSettingsFrame", UIParent)
-    settingsFrame:SetWidth(140)
-    settingsFrame:SetHeight(135)
+    settingsFrame:SetWidth(180)
+    settingsFrame:SetHeight(230)
     settingsFrame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
     settingsFrame:SetBackdrop({
         bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
@@ -953,15 +999,15 @@ function BattleScribe:CreateSettingsWindow()
 
     -- Time Period Label
     local timeLabel = settingsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    timeLabel:SetPoint("TOPLEFT", settingsFrame, "TOPLEFT", 10, -28)
+    timeLabel:SetPoint("TOPLEFT", settingsFrame, "TOPLEFT", 10, -30)
     timeLabel:SetText("Time Period:")
     timeLabel:SetTextColor(0.7, 0.7, 0.7)
 
     -- Time filter button
     local timeBtn = CreateFrame("Button", nil, settingsFrame)
-    timeBtn:SetWidth(120)
-    timeBtn:SetHeight(20)
-    timeBtn:SetPoint("TOPLEFT", timeLabel, "BOTTOMLEFT", 0, -3)
+    timeBtn:SetWidth(160)
+    timeBtn:SetHeight(22)
+    timeBtn:SetPoint("TOPLEFT", timeLabel, "BOTTOMLEFT", 0, -4)
     timeBtn:SetBackdrop({
         bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
         edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
@@ -989,15 +1035,15 @@ function BattleScribe:CreateSettingsWindow()
 
     -- Show Type Label
     local typeLabel = settingsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    typeLabel:SetPoint("TOPLEFT", timeBtn, "BOTTOMLEFT", 0, -6)
+    typeLabel:SetPoint("TOPLEFT", timeBtn, "BOTTOMLEFT", 0, -8)
     typeLabel:SetText("Show Type:")
     typeLabel:SetTextColor(0.7, 0.7, 0.7)
 
     -- Type filter button
     local typeBtn = CreateFrame("Button", nil, settingsFrame)
-    typeBtn:SetWidth(120)
-    typeBtn:SetHeight(20)
-    typeBtn:SetPoint("TOPLEFT", typeLabel, "BOTTOMLEFT", 0, -3)
+    typeBtn:SetWidth(160)
+    typeBtn:SetHeight(22)
+    typeBtn:SetPoint("TOPLEFT", typeLabel, "BOTTOMLEFT", 0, -4)
     typeBtn:SetBackdrop({
         bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
         edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
@@ -1023,11 +1069,53 @@ function BattleScribe:CreateSettingsWindow()
     typeBtn.text = typeBtnText
     self.typeFilterBtn = typeBtn
 
+    -- Hide in Combat Label
+    local hideCombatLabel = settingsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    hideCombatLabel:SetPoint("TOPLEFT", typeBtn, "BOTTOMLEFT", 0, -8)
+    hideCombatLabel:SetText("Hide in Combat:")
+    hideCombatLabel:SetTextColor(0.7, 0.7, 0.7)
+
+    -- Hide in Combat button
+    local hideCombatBtn = CreateFrame("Button", nil, settingsFrame)
+    hideCombatBtn:SetWidth(160)
+    hideCombatBtn:SetHeight(22)
+    hideCombatBtn:SetPoint("TOPLEFT", hideCombatLabel, "BOTTOMLEFT", 0, -4)
+    hideCombatBtn:SetBackdrop({
+        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true,
+        tileSize = 16,
+        edgeSize = 12,
+        insets = { left = 2, right = 2, top = 2, bottom = 2 }
+    })
+    hideCombatBtn:SetBackdropColor(0.1, 0.1, 0.1, 0.9)
+    hideCombatBtn:SetBackdropBorderColor(0.5, 0.5, 0.5, 1)
+    local hideCombatBtnText = hideCombatBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    hideCombatBtnText:SetPoint("CENTER", 0, 0)
+    hideCombatBtnText:SetText(BattleScribeDB.settings.hideInCombat and "On" or "Off")
+    hideCombatBtn:SetScript("OnEnter", function()
+        this:SetBackdropColor(0.2, 0.2, 0.2, 1)
+    end)
+    hideCombatBtn:SetScript("OnLeave", function()
+        this:SetBackdropColor(0.1, 0.1, 0.1, 0.9)
+    end)
+    hideCombatBtn:SetScript("OnClick", function()
+        BattleScribe:ToggleHideInCombat()
+    end)
+    hideCombatBtn.text = hideCombatBtnText
+    self.hideCombatBtn = hideCombatBtn
+
+    -- Data Management Label
+    local dataLabel = settingsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    dataLabel:SetPoint("TOPLEFT", hideCombatBtn, "BOTTOMLEFT", 0, -8)
+    dataLabel:SetText("Data Management:")
+    dataLabel:SetTextColor(0.7, 0.7, 0.7)
+
     -- Reset button
     local resetBtn = CreateFrame("Button", nil, settingsFrame)
-    resetBtn:SetWidth(120)
-    resetBtn:SetHeight(20)
-    resetBtn:SetPoint("TOPLEFT", typeBtn, "BOTTOMLEFT", 0, -6)
+    resetBtn:SetWidth(160)
+    resetBtn:SetHeight(22)
+    resetBtn:SetPoint("TOPLEFT", dataLabel, "BOTTOMLEFT", 0, -4)
     resetBtn:SetBackdrop({
         bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
         edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
@@ -1040,7 +1128,7 @@ function BattleScribe:CreateSettingsWindow()
     resetBtn:SetBackdropBorderColor(0.5, 0.5, 0.5, 1)
     local resetBtnText = resetBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     resetBtnText:SetPoint("CENTER", 0, 0)
-    resetBtnText:SetText("Reset All")
+    resetBtnText:SetText("Reset All Data")
     resetBtn:SetScript("OnEnter", function()
         this:SetBackdropColor(0.2, 0.2, 0.2, 1)
     end)
@@ -1081,6 +1169,17 @@ function BattleScribe:ToggleTypeFilter()
     end
 
     self:UpdateDisplay()
+end
+
+-- Toggle hide in combat setting
+function BattleScribe:ToggleHideInCombat()
+    BattleScribeDB.settings.hideInCombat = not BattleScribeDB.settings.hideInCombat
+
+    if BattleScribeDB.settings.hideInCombat then
+        self.hideCombatBtn.text:SetText("On")
+    else
+        self.hideCombatBtn.text:SetText("Off")
+    end
 end
 
 -- Toggle menu visibility
