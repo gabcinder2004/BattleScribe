@@ -33,7 +33,8 @@ function BattleScribe:Initialize()
                 sortColumn = "name",
                 sortAscending = true,
                 showCurrentSessionOnly = false,
-                hideInCombat = false
+                hideInCombat = false,
+                locked = false
             }
         }
     end
@@ -77,6 +78,9 @@ function BattleScribe:Initialize()
     end
     if BattleScribeDB.settings.hideInCombat == nil then
         BattleScribeDB.settings.hideInCombat = false
+    end
+    if BattleScribeDB.settings.locked == nil then
+        BattleScribeDB.settings.locked = false
     end
 
     -- Restore sort settings
@@ -574,28 +578,30 @@ function BattleScribe:CreateUI()
 
     -- Make frame draggable via title bar
     frame:SetScript("OnMouseDown", function()
-        if arg1 == "LeftButton" then
+        if arg1 == "LeftButton" and not BattleScribeDB.settings.locked then
             this:StartMoving()
         end
     end)
     frame:SetScript("OnMouseUp", function()
-        this:StopMovingOrSizing()
-        -- Save position immediately after moving
-        -- Get the actual screen position of the frame's top-left corner
-        local frameLeft = this:GetLeft()
-        local frameTop = this:GetTop()
-        local uiParentBottom = UIParent:GetBottom()
+        if not BattleScribeDB.settings.locked then
+            this:StopMovingOrSizing()
+            -- Save position immediately after moving
+            -- Get the actual screen position of the frame's top-left corner
+            local frameLeft = this:GetLeft()
+            local frameTop = this:GetTop()
+            local uiParentBottom = UIParent:GetBottom()
 
-        -- Convert to TOPLEFT -> BOTTOMLEFT coordinates
-        local x = frameLeft
-        local y = frameTop - uiParentBottom
+            -- Convert to TOPLEFT -> BOTTOMLEFT coordinates
+            local x = frameLeft
+            local y = frameTop - uiParentBottom
 
-        BattleScribeDB.settings.frameX = x
-        BattleScribeDB.settings.frameY = y
+            BattleScribeDB.settings.frameX = x
+            BattleScribeDB.settings.frameY = y
 
-        -- Re-anchor to ensure consistent positioning
-        this:ClearAllPoints()
-        this:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", x, y)
+            -- Re-anchor to ensure consistent positioning
+            this:ClearAllPoints()
+            this:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", x, y)
+        end
     end)
 
     -- Close button
@@ -650,6 +656,39 @@ function BattleScribe:CreateUI()
         BattleScribe:ToggleMenu()
     end)
     frame.menuBtn = menuBtn
+
+    -- Lock/Unlock button
+    local lockBtn = CreateFrame("Button", nil, frame)
+    lockBtn:SetWidth(14)
+    lockBtn:SetHeight(14)
+    lockBtn:SetPoint("RIGHT", menuBtn, "LEFT", -3, 0)
+
+    -- Create lock texture
+    local lockTexture = lockBtn:CreateTexture(nil, "ARTWORK")
+    lockTexture:SetWidth(14)
+    lockTexture:SetHeight(14)
+    lockTexture:SetAllPoints(lockBtn)
+
+    -- Set initial texture based on current locked state
+    if BattleScribeDB.settings.locked then
+        lockTexture:SetTexture("Interface\\AddOns\\BattleScribe\\images\\yellow_lock_icon_ui.tga")
+    else
+        lockTexture:SetTexture("Interface\\AddOns\\BattleScribe\\images\\yellow_unlock_icon_ui.tga")
+    end
+    lockTexture:SetTexCoord(0, 1, 0, 1)
+    lockBtn.lockTexture = lockTexture
+
+    lockBtn:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+    lockBtn:SetScript("OnEnter", function()
+        this.lockTexture:SetVertexColor(1.2, 1.2, 1.2)
+    end)
+    lockBtn:SetScript("OnLeave", function()
+        this.lockTexture:SetVertexColor(1, 1, 1)
+    end)
+    lockBtn:SetScript("OnClick", function()
+        BattleScribe:ToggleLock()
+    end)
+    frame.lockBtn = lockBtn
 
     -- Resize grip (bottom-left corner, away from scrollbar)
     local resizeGrip = CreateFrame("Frame", nil, frame)
@@ -1188,6 +1227,18 @@ function BattleScribe:ToggleMenu()
         self.settingsFrame:Hide()
     else
         self.settingsFrame:Show()
+    end
+end
+
+function BattleScribe:ToggleLock()
+    -- Toggle the locked state
+    BattleScribeDB.settings.locked = not BattleScribeDB.settings.locked
+
+    -- Update the lock icon
+    if BattleScribeDB.settings.locked then
+        self.frame.lockBtn.lockTexture:SetTexture("Interface\\AddOns\\BattleScribe\\images\\yellow_lock_icon_ui.tga")
+    else
+        self.frame.lockBtn.lockTexture:SetTexture("Interface\\AddOns\\BattleScribe\\images\\yellow_unlock_icon_ui.tga")
     end
 end
 

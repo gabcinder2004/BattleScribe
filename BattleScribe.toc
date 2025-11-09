@@ -2,7 +2,7 @@
 ## Title: BattleScribe
 ## Notes: Tracks and displays your highest normal and critical hits for each ability
 ## Author: YourName
-## Version: 1.0
+## Version: 1.1
 ## SavedVariables: BattleScribeDB
 
 BattleScribe.lua
